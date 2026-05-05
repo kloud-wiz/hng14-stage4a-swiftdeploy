@@ -1,4 +1,4 @@
-# SwiftDeploy
+# Kloudwiz SwiftDeploy
 
 A declarative CLI tool that generates and manages a containerized service stack from a single `manifest.yaml`. Nothing is handwritten — the manifest is the single source of truth.
 
@@ -39,6 +39,8 @@ cd hng14-stage4a-swiftdeploy
 python3 -m venv venv
 source venv/bin/activate
 ```
+
+> **Note:** You must activate the virtual environment every time you open a new terminal session before running `./swiftdeploy`. If you see import errors, run `source venv/bin/activate` first.
 
 **3. Install CLI dependencies:**
 ```bash
@@ -153,6 +155,11 @@ volumes:
   logs: app-logs                       # Named volume for app logs
 ```
 
+## Screenshots
+
+[View submission screenshots on Google Drive](#) <!-- Replace # with your Google Drive link -->
+
 ## Author
 
 **Wisdom Emmanuel** — [@kloud-wiz](https://github.com/kloud-wiz)  
+Blog: [kloudwiz.hashnode.dev](https://kloudwiz.hashnode.dev)
