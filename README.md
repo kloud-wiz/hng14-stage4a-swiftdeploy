@@ -157,7 +157,7 @@ volumes:
 
 ## Screenshots
 
-[View submission screenshots on Google Drive](#) <!-- Replace # with your Google Drive link -->
+[View submission screenshots on Google Drive](https://drive.google.com/drive/folders/1rpe5oySapxUcIc9vYEWZD1Ew9GjvtYmg?usp=sharing)
 
 ## Author
 
