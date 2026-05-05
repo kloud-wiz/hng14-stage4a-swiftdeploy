@@ -153,10 +153,18 @@ def cmd_validate():
         print("❌ [5/5] nginx.conf not found — run 'swiftdeploy init' first")
         failures += 1
     else:
+        # Use a custom nginx.conf that replaces the upstream 'app' with localhost
+        # so nginx -t can validate syntax without needing the Docker network
+        test_conf = NGINX_CONF.read_text().replace("http://app:", "http://127.0.0.1:")
+        test_conf_path = ROOT / ".nginx_test.conf"
+        test_conf_path.write_text(test_conf)
+
         result = subprocess.run(
-            f"docker run --rm -v {NGINX_CONF}:/etc/nginx/conf.d/default.conf:ro nginx:latest nginx -t",
+            f"docker run --rm -v {test_conf_path}:/etc/nginx/conf.d/default.conf:ro nginx:latest nginx -t",
             shell=True, capture_output=True
         )
+        test_conf_path.unlink()  # clean up temp file
+
         if result.returncode != 0:
             print(f"❌ [5/5] nginx.conf has syntax errors")
             print(result.stderr.decode())

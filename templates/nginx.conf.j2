@@ -1,7 +1,7 @@
 log_format custom '$time_iso8601 | $status | ${request_time}s | $upstream_addr | $request';
 
 server {
-    listen {{ nginx.port }};
+    listen 80;
 
     access_log /var/log/nginx/access.log custom;
     error_log /var/log/nginx/error.log warn;
