@@ -1,8 +1,8 @@
 {
   "infrastructure": {
-    "min_disk_free_gb": 10,
+    "min_disk_free_gb": 10.0,
     "max_cpu_load": 2.0,
-    "max_memory_percent": 90
+    "max_memory_percent": 90.0
   },
   "canary": {
     "max_error_rate": 0.01,
