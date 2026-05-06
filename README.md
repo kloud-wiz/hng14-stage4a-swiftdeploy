@@ -253,7 +253,7 @@ volumes:
 
 ## Blog Post
 
-[Read the full technical deep dive](#)
+[Read the full technical deep dive](https://kloudwiz.hashnode.dev/kloudwiz-swiftdeploy-a-declarative-cli-tool-with-opa-policy-gating-and-prometheus-observability)
 
 ## Author
 
