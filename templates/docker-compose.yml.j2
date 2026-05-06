@@ -46,6 +46,23 @@ services:
       - DAC_OVERRIDE
       - FOWNER
 
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: swiftdeploy-opa
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=error"
+      - "/policies"
+    volumes:
+      - ./policies:/policies:ro
+    networks:
+      - {{ network.name }}
+    restart: {{ services.restart_policy }}
+    cap_drop:
+      - ALL
+
 networks:
   {{ network.name }}:
     driver: {{ network.driver_type }}
