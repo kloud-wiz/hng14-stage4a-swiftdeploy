@@ -49,6 +49,8 @@ services:
   opa:
     image: openpolicyagent/opa:latest
     container_name: swiftdeploy-opa
+    ports:
+      - "127.0.0.1:{{ opa.port }}:{{ opa.port }}"
     command:
       - "run"
       - "--server"

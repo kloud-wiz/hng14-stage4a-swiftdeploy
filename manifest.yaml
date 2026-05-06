@@ -1,7 +1,7 @@
 services:
   image: kloudwiz-swiftdeploy:latest
   port: 3000
-  mode: stable
+  mode: canary
   version: 1.0.0
   restart_policy: unless-stopped
 
@@ -16,3 +16,6 @@ network:
 
 volumes:
   logs: app-logs
+
+opa:
+  port: 8181

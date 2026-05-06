@@ -3,12 +3,15 @@
 import os
 import sys
 import time
+import json
 import socket
 import subprocess
 import urllib.request
+import urllib.error
 from pathlib import Path
 
 import yaml
+import psutil
 from jinja2 import Environment, FileSystemLoader
 
 # ── paths ────────────────────────────────────────────────────────────────────
@@ -78,6 +81,201 @@ def health_check(timeout=60):
     print("❌ Health check timed out after 60s")
     return False
 
+def wait_for_opa(timeout=30):
+    """Wait for OPA to be ready before running policy checks."""
+    manifest = load_manifest()
+    opa_port = manifest.get("opa", {}).get("port", 8181)
+    url = f"http://localhost:{opa_port}/health"
+    deadline = time.time() + timeout
+
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as r:
+                if r.status == 200:
+                    return True
+        except Exception:
+            pass
+        time.sleep(2)
+    return False
+
+def query_opa(policy_path, input_data):
+    """
+    Query OPA with input data and return the decision.
+    Returns (allow, violations, error) tuple.
+    """
+    manifest = load_manifest()
+    opa_port = manifest.get("opa", {}).get("port", 8181)
+    opa_url = f"http://localhost:{opa_port}/v1/data/{policy_path}"
+    payload = json.dumps({"input": input_data}).encode()
+
+    try:
+        req = urllib.request.Request(
+            opa_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            result = json.loads(r.read())
+            result = result.get("result", {})
+            allow = result.get("allow", False)
+            violations = list(result.get("violations", []))
+            return allow, violations, None
+
+    except urllib.error.URLError:
+        return None, [], "OPA is unavailable — cannot connect to policy engine"
+    except urllib.error.HTTPError as e:
+        return None, [], f"OPA returned HTTP {e.code}: {e.reason}"
+    except Exception as e:
+        return None, [], f"OPA query failed: {e}"
+
+
+def pre_deploy_check():
+    """Collect host stats and query OPA infrastructure policy."""
+    print("🔍 Running pre-deploy policy check...\n")
+
+    disk = psutil.disk_usage("/")
+    disk_free_gb = disk.free / (1024 ** 3)
+    cpu_load = psutil.getloadavg()[0]
+    memory = psutil.virtual_memory()
+    memory_percent = memory.percent
+
+    input_data = {
+        "disk_free_gb": round(disk_free_gb, 2),
+        "cpu_load": round(cpu_load, 2),
+        "memory_percent": round(memory_percent, 2),
+        "check": "pre-deploy"
+    }
+
+    print(f"   Disk free:    {disk_free_gb:.1f}GB")
+    print(f"   CPU load:     {cpu_load:.2f}")
+    print(f"   Memory usage: {memory_percent:.1f}%\n")
+
+    allow, violations, error = query_opa("swiftdeploy/infrastructure", input_data)
+
+    if error:
+        print(f"⚠️  Policy check skipped: {error}")
+        return True  # Fail open — allow deploy if OPA is unavailable
+
+    if not allow:
+        print("❌ Pre-deploy policy check FAILED:")
+        for v in violations:
+            print(f"   • {v}")
+        print()
+        return False
+
+    print("✅ Pre-deploy policy check PASSED\n")
+    return True
+
+
+def scrape_metrics():
+    """Scrape /metrics from the app via nginx and parse Prometheus text format."""
+    port = get_nginx_port()
+    url = f"http://localhost:{port}/metrics"
+
+    try:
+        with urllib.request.urlopen(url, timeout=5) as r:
+            return r.read().decode()
+    except Exception as e:
+        return None
+
+
+def parse_metrics(metrics_text):
+    """Parse Prometheus text format and extract key values."""
+    result = {}
+    for line in metrics_text.splitlines():
+        if line.startswith("#"):
+            continue
+        if " " in line:
+            key, value = line.rsplit(" ", 1)
+            result[key.strip()] = float(value.strip())
+    return result
+
+
+def calculate_error_rate(metrics):
+    """Calculate error rate from http_requests_total counter."""
+    total = 0
+    errors = 0
+
+    for key, value in metrics.items():
+        if key.startswith("http_requests_total{"):
+            total += value
+            if 'status_code="5' in key:
+                errors += value
+
+    if total == 0:
+        return 0.0
+    return errors / total
+
+
+def calculate_p99_latency(metrics):
+    """Calculate P99 latency in milliseconds from histogram buckets."""
+    # Find the 0.5 bucket as approximation for P99
+    # In production you'd use proper histogram quantile calculation
+    buckets = {}
+    for key, value in metrics.items():
+        if "http_request_duration_seconds_bucket" in key and 'le="' in key:
+            le = float(key.split('le="')[1].split('"')[0])
+            buckets[le] = value
+
+    if not buckets:
+        return 0.0
+
+    total_key = [k for k in metrics if "http_request_duration_seconds_count" in k]
+    if not total_key:
+        return 0.0
+
+    total = sum(metrics[k] for k in total_key)
+    if total == 0:
+        return 0.0
+
+    p99_target = total * 0.99
+    sorted_buckets = sorted(buckets.items())
+
+    for le, count in sorted_buckets:
+        if count >= p99_target:
+            return le * 1000  # convert to ms
+
+    return sorted_buckets[-1][0] * 1000
+
+
+def pre_promote_check():
+    """Scrape metrics, calculate error rate and P99 latency, query OPA canary policy."""
+    print("🔍 Running pre-promote policy check...\n")
+
+    metrics_text = scrape_metrics()
+    if not metrics_text:
+        print("⚠️  Could not scrape /metrics — skipping policy check")
+        return True
+
+    metrics = parse_metrics(metrics_text)
+    error_rate = calculate_error_rate(metrics)
+    p99_latency_ms = calculate_p99_latency(metrics)
+
+    input_data = {
+        "error_rate": round(error_rate, 4),
+        "p99_latency_ms": round(p99_latency_ms, 2),
+        "check": "pre-promote"
+    }
+
+    print(f"   Error rate:   {error_rate * 100:.2f}%")
+    print(f"   P99 latency:  {p99_latency_ms:.1f}ms\n")
+
+    allow, violations, error = query_opa("swiftdeploy/canary", input_data)
+
+    if error:
+        print(f"⚠️  Policy check skipped: {error}")
+        return True
+
+    if not allow:
+        print("❌ Pre-promote policy check FAILED:")
+        for v in violations:
+            print(f"   • {v}")
+        print()
+        return False
+
+    print("✅ Pre-promote policy check PASSED\n")
+    return True
 
 # ── subcommands ───────────────────────────────────────────────────────────────
 
@@ -185,6 +383,19 @@ def cmd_deploy():
     print("🚀 Running deploy...\n")
     cmd_init()
     print()
+
+    # Start OPA first so policy checks can run
+    compose("up -d opa")
+    print("⏳ Waiting for OPA to be ready...")
+    if not wait_for_opa():
+        print("⚠️  OPA did not start in time — proceeding without policy check")
+    else:
+        print("✅ OPA is ready\n")
+        if not pre_deploy_check():
+            print("🚫 Deployment blocked by policy")
+            compose("down opa", check=False)
+            sys.exit(1)
+
     compose("up -d --build")
     print()
     if not health_check():
@@ -209,6 +420,12 @@ def cmd_promote(mode):
     if old_mode == mode:
         print(f"ℹ️  Already in {mode} mode — nothing to do")
         sys.exit(0)
+
+    # Run pre-promote policy check before switching to canary
+    if mode == "canary":
+        if not pre_promote_check():
+            print("🚫 Promotion blocked by policy")
+            sys.exit(1)
 
     # Replace mode value in-place preserving file structure
     updated = content.replace(f"mode: {old_mode}", f"mode: {mode}", 1)

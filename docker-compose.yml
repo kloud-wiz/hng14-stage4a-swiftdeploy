@@ -3,7 +3,7 @@ services:
     image: kloudwiz-swiftdeploy:latest
     container_name: swiftdeploy-app
     environment:
-      - MODE=stable
+      - MODE=canary
       - APP_VERSION=1.0.0
       - APP_PORT=3000
     expose:
@@ -49,6 +49,8 @@ services:
   opa:
     image: openpolicyagent/opa:latest
     container_name: swiftdeploy-opa
+    ports:
+      - "127.0.0.1:8181:8181"
     command:
       - "run"
       - "--server"
