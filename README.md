@@ -248,6 +248,7 @@ volumes:
 ## Screenshots
 
 [Kloudwiz SwiftDeploy - Stage 4A Screenshots](https://drive.google.com/drive/folders/1rpe5oySapxUcIc9vYEWZD1Ew9GjvtYmg?usp=sharing)
+
 [Kloudwiz SwiftDeploy - Stage 4B Screenshots](https://drive.google.com/drive/folders/1AAczEYUHCPPJCcTDpNWnUPMVz0WE71gp?usp=sharing)
 
 ## Blog Post
