@@ -591,6 +591,138 @@ def cmd_status():
     except KeyboardInterrupt:
         print("\n\n👋 Status dashboard stopped.")
 
+def cmd_audit():
+    """
+    Parse history.jsonl and generate audit_report.md.
+    Includes a timeline of mode changes and chaos injections,
+    and a violations section for any failed policy checks.
+    """
+    history_file = ROOT / "history.jsonl"
+    report_file = ROOT / "audit_report.md"
+
+    if not history_file.exists():
+        print("❌ No history.jsonl found — run 'swiftdeploy status' first")
+        sys.exit(1)
+
+    records = []
+    with open(history_file) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+
+    if not records:
+        print("❌ history.jsonl is empty")
+        sys.exit(1)
+
+    # ── Build timeline of mode changes and chaos injections ──────────────────
+    timeline = []
+    prev_mode = None
+    prev_chaos = None
+
+    for r in records:
+        mode = r.get("mode", "unknown")
+        chaos = r.get("chaos", "none")
+        ts = r.get("timestamp", "unknown")
+
+        if mode != prev_mode:
+            timeline.append({
+                "timestamp": ts,
+                "event": f"Mode changed to **{mode}**",
+                "mode": mode,
+                "chaos": chaos
+            })
+            prev_mode = mode
+
+        if chaos != prev_chaos:
+            if chaos != "none":
+                timeline.append({
+                    "timestamp": ts,
+                    "event": f"Chaos injected: **{chaos}**",
+                    "mode": mode,
+                    "chaos": chaos
+                })
+            else:
+                timeline.append({
+                    "timestamp": ts,
+                    "event": "Chaos recovered",
+                    "mode": mode,
+                    "chaos": chaos
+                })
+            prev_chaos = chaos
+
+    # ── Collect violations ───────────────────────────────────────────────────
+    violations = []
+    for r in records:
+        ts = r.get("timestamp", "unknown")
+        policy = r.get("policy", {})
+
+        for domain, result in policy.items():
+            if not result.get("allow", True):
+                for msg in result.get("violations", []):
+                    violations.append({
+                        "timestamp": ts,
+                        "domain": domain,
+                        "violation": msg,
+                        "mode": r.get("mode", "unknown"),
+                        "chaos": r.get("chaos", "none")
+                    })
+
+    # ── Write report ─────────────────────────────────────────────────────────
+    first = records[0]
+    last = records[-1]
+
+    with open(report_file, "w") as f:
+        f.write("# SwiftDeploy Audit Report\n\n")
+        f.write(f"**Generated:** {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}  \n")
+        f.write(f"**Period:** {first['timestamp']} → {last['timestamp']}  \n")
+        f.write(f"**Total scrapes:** {len(records)}  \n\n")
+        f.write("---\n\n")
+
+        # Timeline section
+        f.write("## Timeline\n\n")
+        if timeline:
+            f.write("| Timestamp | Event | Mode | Chaos |\n")
+            f.write("|---|---|---|---|\n")
+            for t in timeline:
+                f.write(f"| {t['timestamp']} | {t['event']} | {t['mode']} | {t['chaos']} |\n")
+        else:
+            f.write("_No mode changes or chaos events recorded._\n")
+
+        f.write("\n---\n\n")
+
+        # Violations section
+        f.write("## Policy Violations\n\n")
+        if violations:
+            f.write("| Timestamp | Domain | Violation | Mode | Chaos |\n")
+            f.write("|---|---|---|---|---|\n")
+            for v in violations:
+                f.write(f"| {v['timestamp']} | {v['domain']} | {v['violation']} | {v['mode']} | {v['chaos']} |\n")
+        else:
+            f.write("_No policy violations recorded._\n")
+
+        f.write("\n---\n\n")
+
+        # Summary section
+        f.write("## Summary\n\n")
+        total_violations = len(violations)
+        canary_scrapes = sum(1 for r in records if r.get("mode") == "canary")
+        stable_scrapes = sum(1 for r in records if r.get("mode") == "stable")
+        chaos_scrapes = sum(1 for r in records if r.get("chaos") != "none")
+
+        f.write(f"| Metric | Value |\n")
+        f.write(f"|---|---|\n")
+        f.write(f"| Total scrapes | {len(records)} |\n")
+        f.write(f"| Stable scrapes | {stable_scrapes} |\n")
+        f.write(f"| Canary scrapes | {canary_scrapes} |\n")
+        f.write(f"| Chaos scrapes | {chaos_scrapes} |\n")
+        f.write(f"| Total violations | {total_violations} |\n")
+
+    print(f"✅ Audit report generated: {report_file}")
+
 
 def main():
     args = sys.argv[1:]
@@ -622,6 +754,9 @@ def main():
 
     elif command == "status":
         cmd_status()
+
+    elif command == "audit":
+        cmd_audit()
 
     else:
         print(f"❌ Unknown command: {command}")
