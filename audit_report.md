@@ -1,8 +1,8 @@
 # SwiftDeploy Audit Report
 
-**Generated:** 2026-05-06T15:56:39Z  
-**Period:** 2026-05-06T15:55:55Z → 2026-05-06T15:56:36Z  
-**Total scrapes:** 9  
+**Generated:** 2026-05-06T17:51:03Z  
+**Period:** 2026-05-06T15:55:55Z → 2026-05-06T17:39:10Z  
+**Total scrapes:** 27  
 
 ---
 
@@ -25,8 +25,8 @@ _No policy violations recorded._
 
 | Metric | Value |
 |---|---|
-| Total scrapes | 9 |
+| Total scrapes | 27 |
 | Stable scrapes | 0 |
-| Canary scrapes | 9 |
+| Canary scrapes | 27 |
 | Chaos scrapes | 0 |
 | Total violations | 0 |
